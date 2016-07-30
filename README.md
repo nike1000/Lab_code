@@ -11,3 +11,12 @@
 
   * pingall under secure and standalone fail mode
   * understand different between secure and standalone fail mode
+
+### HW2
+
+  * Install Ryu
+  * Write a ryu app:
+    * controller set two flow entries to each switch
+      - packet come in from port A packet out to port B
+      - packet come in from port B packet out to port A 
+  * Modify HW1 mininet script ,connect to remote controller
