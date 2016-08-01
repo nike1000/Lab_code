@@ -10,7 +10,7 @@ from ryu.controller import ofp_event
 from ryu.ofproto import ofproto_v1_5_parser
 
 class MyRyu(app_manager.RyuApp):
-    OFP_VERSION = [ofproto_v1_5.OFP_VERSION]
+    OFP_VERSIONS = [ofproto_v1_5.OFP_VERSION]
     normal_port = []
 
     def __init__(self, *args, **kwargs):

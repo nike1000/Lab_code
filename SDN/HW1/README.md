@@ -6,4 +6,4 @@
 
 **hw1_net.py**
   * This is a mininet script, can run without `mn` command
-  * `$ sudo /path/to/hw1_net.py` 
+  * `$ sudo python /path/to/hw1_net.py` 
