@@ -20,3 +20,16 @@
       - packet come in from port A packet out to port B
       - packet come in from port B packet out to port A 
   * Modify HW1 mininet script ,connect to remote controller
+
+### HW3
+
+  * Mininet:
+    * Modify Mininet script from HW2, switches connect as a link,hosts connect to head and tail switch, user can assign the number of switches when execute script
+    * This new mininet script should work well with HW2 ryuapp
+
+  * Ryu:
+    * controller set a flow entry to each switch
+      - when receive packet type is LLDP, send to controller
+    * controller let switches send LLDP packet out to all normal active port after switch connect to controller
+    * controller need packet in handler to handle lldp packet from switch
+    * design a data structure to store lldp result
