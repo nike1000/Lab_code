@@ -33,3 +33,9 @@
     * controller let switches send LLDP packet out to all normal active port after switch connect to controller
     * controller need packet in handler to handle lldp packet from switch
     * design a data structure to store lldp result
+
+### HW4
+
+  * learn how to write and use Ryu RESTful API
+  * use RESTful API to GET HW3 LLDP topo
+
