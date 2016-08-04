@@ -16,7 +16,7 @@ from ryu import utils
 
 class MyRyu(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
-    sw_port_to_sw_port = []
+    lldp_topo = {}
 
     def __init__(self, *args, **kwargs):
         super(MyRyu, self).__init__(*args, **kwargs)
@@ -99,12 +99,10 @@ class MyRyu(app_manager.RyuApp):
 
 
     def handle_lldp(self, datapath, port, pkt_ethernet, pkt_lldp):
-        #print "datapath: "+str(datapath.id)+"  port: "+str(port)
-        #print "pkt_ethernet: "+str(pkt_ethernet)+"  pkt_lldp: "+str(pkt_lldp)
-        swp1 = ["s"+str(datapath.id), "port "+str(port)]
-        swp2 = ["s"+str(pkt_lldp.tlvs[0].chassis_id), "port "+str(pkt_lldp.tlvs[1].port_id)]
-        self.sw_port_to_sw_port.append([swp1, swp2])
-        print self.sw_port_to_sw_port
+        self.lldp_topo.setdefault(datapath.id,{})
+        port_connect = {}
+        self.lldp_topo[datapath.id].setdefault(port, [pkt_lldp.tlvs[0].chassis_id, pkt_lldp.tlvs[1].port_id])
+        print self.lldp_topo
 
     @set_ev_cls(ofp_event.EventOFPErrorMsg,MAIN_DISPATCHER)
     def error_msg_handler(self, ev):
