@@ -16,6 +16,7 @@ from ryu import utils
 
 class MyRyu(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
+    normal_port = []
     lldp_topo = {}
 
     def __init__(self, *args, **kwargs):
@@ -49,8 +50,22 @@ class MyRyu(app_manager.RyuApp):
         
         for stat in ev.msg.body:
             if stat.port_no < ofproto.OFPP_MAX:
+                self.normal_port.append(stat.port_no)
                 self.send_lldp_packet(datapath, stat.port_no, stat.hw_addr)
 
+        if len(self.normal_port) == 2:
+            # port B to port A
+            match = parser.OFPMatch(in_port=self.normal_port[0])
+            actions = [parser.OFPActionOutput(self.normal_port[1])]
+            self.add_flow(datapath, 0, match, actions)
+
+            # port A to port B
+            match = parser.OFPMatch(in_port=self.normal_port[1])
+            actions = [parser.OFPActionOutput(self.normal_port[0])]
+            self.add_flow(datapath, 0, match, actions)
+
+        # clear port record after add flow entry
+        self.normal_port = []
 
     def add_flow(self, datapath, priority, match, actions):
         ofp = datapath.ofproto
