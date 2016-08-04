@@ -1,4 +1,5 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
+# -*- coding: utf8 -*-
 
 from mininet.log import setLogLevel, info
 from mininet.net import Mininet

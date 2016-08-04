@@ -1,3 +1,5 @@
+# -*- coding: utf8 -*-
+
 """
 2016.07.28,first homework from lab
 2 host 1 switch with failmode secure
