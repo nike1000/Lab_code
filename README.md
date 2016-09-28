@@ -39,3 +39,7 @@
   * learn how to write and use Ryu RESTful API
   * use RESTful API to GET HW3 LLDP topo
 
+### RYU_ODL_LLDP
+
+  * Test for multi controller and try to get topo between different controller
+  * base on HW3 mininet topo and HW4 Ryu app
