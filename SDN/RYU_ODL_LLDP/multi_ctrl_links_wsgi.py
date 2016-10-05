@@ -61,7 +61,7 @@ class MyRyu(app_manager.RyuApp):
         # LLDP packet to controller
         match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_LLDP)
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER)]
-        self.add_flow(datapath, 0, match, actions)
+        self.add_flow(datapath, 65535, match, actions)
 
         for stat in ev.msg.body:
             if stat.port_no < ofproto.OFPP_MAX:
