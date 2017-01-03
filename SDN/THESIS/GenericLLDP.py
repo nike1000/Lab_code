@@ -30,6 +30,7 @@ class GenericLLDP(app_manager.RyuApp):
     _CONTEXTS = {'wsgi': WSGIApplication}
     links = {}
     borders = {}
+    mac_to_port = {}
 
     def __init__(self, *args, **kwargs):
         super(GenericLLDP, self).__init__(*args, **kwargs)
@@ -56,9 +57,13 @@ class GenericLLDP(app_manager.RyuApp):
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER)]
         self.add_flow(datapath, 65535, match, actions)
 
+        dpid = self.format_dpid(str(datapath.id))
+        self.mac_to_port.setdefault(dpid, {})
         for stat in ev.msg.body:
             if stat.port_no < ofproto.OFPP_MAX:
-                self.send_lldp_packet(datapath, stat.port_no, stat.hw_addr)
+                self.mac_to_port[dpid][stat.hw_addr] = self.format_port(str(stat.port_no))
+
+        self.send_lldp_packet(datapath, stat.port_no, stat.hw_addr)
 
     def add_flow(self, datapath, priority, match, actions):
         ofp = datapath.ofproto
@@ -84,7 +89,13 @@ class GenericLLDP(app_manager.RyuApp):
 
         data = pkt.data
         parser = datapath.ofproto_parser
-        actions = [parser.OFPActionOutput(port=port_no)]
+
+        actions = []
+        dpid = self.format_dpid(str(datapath.id))
+        for src in self.mac_to_port[dpid]:
+            actions.append(parser.OFPActionSetField(eth_src=src))
+            actions.append(parser.OFPActionOutput(port=int(self.mac_to_port[dpid][src])))
+
         out = parser.OFPPacketOut(datapath=datapath, buffer_id=ofp.OFP_NO_BUFFER, in_port=ofp.OFPP_CONTROLLER, actions=actions, data=data)
         datapath.send_msg(out)
 
@@ -103,7 +114,7 @@ class GenericLLDP(app_manager.RyuApp):
         if pkt_lldp:
             if self.lldp_format_check(pkt_lldp):
                 ryu_src_dpid = pkt_lldp.tlvs[0].chassis_id
-                ryu_src_port = pkt_lldp.tlvs[1].port_id
+                ryu_src_port = self.mac_to_port[ryu_src_dpid][pkt_ethernet.src]
                 ryu_src_sysname = pkt_lldp.tlvs[3].system_name
                 ryu_dst_dpid = self.format_dpid(str(datapath.id))
                 ryu_dst_port = self.format_port(str(port))
@@ -120,7 +131,7 @@ class GenericLLDP(app_manager.RyuApp):
                             "system_name":ryu_dst_sysname
                             }
                         }
-                print self.links
+                print json.dumps(self.links, indent=4, sort_keys=True) + '\n'
 
     def format_dpid(self, dpid):
         return dpid.zfill(16)
