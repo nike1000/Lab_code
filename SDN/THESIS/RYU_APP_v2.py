@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
-# 2017.02.27 kshuang
+# 2016.12.14 kshuang
 
 from ryu.base import app_manager
 from ryu.ofproto import ofproto_v1_3
@@ -14,7 +14,7 @@ from ryu.lib.packet import packet
 from ryu import utils
 from ryu.app.wsgi import ControllerBase, WSGIApplication, route
 from ryu.lib import dpid as dpid_lib
-from ryu.lib import hub
+from ryu.topology import event as topo_event
 from webob import Response
 import requests
 import json
@@ -22,10 +22,8 @@ import socket
 import urllib2
 import base64
 import yaml
-import datetime
 
-#REGISTER_URL_BASE = 'http://140.113.216.237:8080/Generic_LLDP_Module/rest/register?ctrl_type='
-REGISTER_URL_BASE = 'http://140.113.216.237:8080/Generic_LLDP_Module/rest'
+REGISTER_URL_BASE = 'http://140.113.216.237:8080/Generic_LLDP_Module/rest/register?ctrl_type='
 CTRL_TYPE = 'ryu'
 INSTANCE_NAME = 'ryu'
 linkurl = '/link/{dpid}'
@@ -41,46 +39,59 @@ class GenericLLDP(app_manager.RyuApp):
 
     def __init__(self, *args, **kwargs):
         super(GenericLLDP, self).__init__(*args, **kwargs)
-
-        # GET SYSTEM_NAME from Generic_LLDP_Module
-        #req_data = {'ctrl_type':'ryu'}
-        #response = requests.get(REGISTER_URL_BASE+CTRL_TYPE)
-        response = requests.post(REGISTER_URL_BASE+'/controllers/ryu')
+        response = requests.get(REGISTER_URL_BASE+CTRL_TYPE)
         data = yaml.safe_load(response.text)
-        self.SYSTEM_NAME = data['system_name']
+        self.SYSTEM_NAME = data['ctrl_id']
 
-        # register wsgi RESTful API
         wsgi = kwargs['wsgi']
         wsgi.register(wsgiAPI, {INSTANCE_NAME: self})
 
-        # use thread to do regular LLDP task
         self.datapaths = {}
-        self.lldp_thread = hub.spawn(self._lldp_thread)
+        self.dp_ports = {}
 
     @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, DEAD_DISPATCHER])
     def _state_change_handler(self, ev):
         datapath = ev.datapath
         if ev.state == MAIN_DISPATCHER:
-            if not datapath.id in self.datapaths:
-                self.logger.debug('register datapath: %016x', datapath.id)
-                self.datapaths[datapath.id] = datapath
-                data = {'system_name': self.SYSTEM_NAME, 'dpid': datapath.id}
-                response = requests.post(REGISTER_URL_BASE+'/switches/'+self.SYSTEM_NAME+'/'+str(datapath.id), json=data)
+            print 'register datapath: %016x' % datapath.id
+            self.datapaths[datapath.id] = datapath
+            self.dp_ports[datapath.id] = []
         elif ev.state == DEAD_DISPATCHER:
             if datapath.id in self.datapaths:
-                self.logger.debug('unregister datapath: %016x', datapath.id)
+                print 'unregister datapath: %016x' % datapath.id
                 del self.datapaths[datapath.id]
-                response = requests.delete(REGISTER_URL_BASE+'/switches/'+self.SYSTEM_NAME+'/'+str(datapath.id))
+                del self.dp_ports[datapath.id]
 
-    def _lldp_thread(self):
-        while True:
-            self.links = {}
-            for dp in self.datapaths.values():
-                ofp = dp.ofproto
-                ofp_parser = dp.ofproto_parser
-                req = ofp_parser.OFPPortDescStatsRequest(dp, 0, ofp.OFPP_ANY)
-                dp.send_msg(req)
-            hub.sleep(5);
+
+
+    @set_ev_cls(ofp_event.EventOFPPortStatus, MAIN_DISPATCHER)
+    def port_status_handler(self, ev):
+        msg = ev.msg
+        dp = msg.datapath
+        ofp = dp.ofproto
+
+        if msg.reason == ofp.OFPPR_ADD:
+            ofp_parser = datapath.ofproto_parser
+            req = ofp_parser.OFPPortDescStatsRequest(datapath, 0, ofp.OFPP_ANY)
+            datapath.send_msg(req)
+            reason = 'ADD'
+        elif msg.reason == ofp.OFPPR_DELETE:
+            reason = 'DELETE'
+        elif msg.reason == ofp.OFPPR_MODIFY:
+            reason = 'MODIFY'
+        else:
+            reason = 'unknown'
+
+        print 'OFPPortStatus received: reason=%s desc=%s' % (reason, msg.desc)
+
+    @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
+    def switch_features_handler(self, ev):
+        msg = ev.msg
+        datapath = msg.datapath
+        ofp = datapath.ofproto
+        ofp_parser = datapath.ofproto_parser
+        req = ofp_parser.OFPPortDescStatsRequest(datapath, 0, ofp.OFPP_ANY)
+        datapath.send_msg(req)
 
     @set_ev_cls(ofp_event.EventOFPPortDescStatsReply, MAIN_DISPATCHER)
     def port_desc_stats_reply_handler(self, ev):
@@ -97,6 +108,9 @@ class GenericLLDP(app_manager.RyuApp):
         self.mac_to_port.setdefault(dpid, {})
         for stat in ev.msg.body:
             if stat.port_no < ofproto.OFPP_MAX:
+                self.dp_ports[datapath.id].append({"hw_addr":stat.hw_addr, "name":stat.name, "port_no":stat.port_no, "dpid":datapath.id})
+                print self.dp_ports[datapath.id]
+                print json.dumps(self.dp_ports, indent=4, sort_keys=True) + '\n'
                 self.mac_to_port[dpid][stat.hw_addr] = self.format_port(str(stat.port_no))
 
         self.send_lldp_packet(datapath, stat.port_no, stat.hw_addr)
@@ -156,9 +170,7 @@ class GenericLLDP(app_manager.RyuApp):
                 ryu_dst_dpid = self.format_dpid(str(datapath.id))
                 ryu_dst_port = self.format_port(str(port))
                 ryu_dst_sysname = self.SYSTEM_NAME
-                timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 self.links[ryu_src_dpid+":"+ryu_src_port] = {
-                        "datetime": timestamp,
                         "src":{
                             "dpid":ryu_src_dpid,
                             "port_no":ryu_src_port,
@@ -170,7 +182,7 @@ class GenericLLDP(app_manager.RyuApp):
                             "system_name":ryu_dst_sysname
                             }
                         }
-                print json.dumps(self.links, indent=4, sort_keys=True) + '\n'
+                #print json.dumps(self.links, indent=4, sort_keys=True) + '\n'
 
     def format_dpid(self, dpid):
         return dpid.zfill(16)
