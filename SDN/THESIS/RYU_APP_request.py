@@ -22,7 +22,6 @@ CTRL_TYPE = 'ryu'
 class RYU_APP_request(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
     SYSTEM_NAME = ''
-    links = {}
 
     def __init__(self, *args, **kwargs):
         super(RYU_APP_request, self).__init__(*args, **kwargs)
@@ -34,6 +33,7 @@ class RYU_APP_request(app_manager.RyuApp):
 
         # use thread to do  regular LLDP request
         self.datapaths = {}
+        self.links = {}
         hub.spawn(self.lldp_thread)
 
     # thread function to do regular PortDescStatsRequest
@@ -41,9 +41,9 @@ class RYU_APP_request(app_manager.RyuApp):
         while True:
             self.links = {}
             for dp in self.datapaths.values():
-                ofp = dp.ofproto
-                ofp_parser = dp.ofproto_parser
-                req = ofp_parser.OFPPortDescStatsRequest(dp, 0, ofp.OFPP_ANY)
+                ofproto = dp.ofproto
+                parser = dp.ofproto_parser
+                req = parser.OFPPortDescStatsRequest(dp, 0, ofproto.OFPP_ANY)
                 dp.send_msg(req)
             hub.sleep(5);
             response = requests.delete(GENERIC_URL_BASE + '/links/' + self.SYSTEM_NAME)
@@ -63,6 +63,9 @@ class RYU_APP_request(app_manager.RyuApp):
                 mod = parser.OFPFlowMod(datapath = datapath, priority = 65535, command = ofproto.OFPFC_ADD, match = match, instructions = inst)
                 datapath.send_msg(mod)
 
+                req = parser.OFPPortDescStatsRequest(datapath, 0, ofproto.OFPP_ANY)
+                datapath.send_msg(req)
+
                 data = {'system_name': self.SYSTEM_NAME, 'dpid': datapath.id}
                 response = requests.post(GENERIC_URL_BASE + '/switches/' + self.SYSTEM_NAME+'/'+str(datapath.id), json=data)
         elif ev.state == DEAD_DISPATCHER:
@@ -73,10 +76,12 @@ class RYU_APP_request(app_manager.RyuApp):
     @set_ev_cls(ofp_event.EventOFPPortDescStatsReply, MAIN_DISPATCHER)
     def port_desc_stats_reply_handler(self, ev):
         datapath = ev.msg.datapath
-        for stat in ev.msg.body:
-            data = {'dpid': datapath.id, 'hw_addr': stat.hw_addr, 'name': stat.name, 'port_no': stat.port_no}
-            response = requests.post(GENERIC_URL_BASE + '/ports/' + self.SYSTEM_NAME + '/' + str(datapath.id) + '/' + stat.name, json=data)
-            self.send_lldp_packet(datapath, stat.port_no, stat.hw_addr)
+        response = requests.delete(GENERIC_URL_BASE + '/ports/' + self.SYSTEM_NAME + '/' + str(datapath.id))
+
+        for ofpport in ev.msg.body:
+            data = {'dpid': datapath.id, 'hw_addr': ofpport.hw_addr, 'name': ofpport.name, 'port_no': ofpport.port_no}
+            response = requests.post(GENERIC_URL_BASE + '/ports/' + self.SYSTEM_NAME + '/' + str(datapath.id) + '/' + ofpport.name, json=data)
+            self.send_lldp_packet(datapath, ofpport.port_no, ofpport.hw_addr)
 
     def send_lldp_packet(self, datapath, port_no, hw_addr):
         ofproto = datapath.ofproto
