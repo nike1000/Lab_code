@@ -15,6 +15,7 @@ from ryu.lib import hub
 import requests
 import json
 import yaml
+import time
 
 GENERIC_URL_BASE = 'http://140.113.216.237:8080/Generic_LLDP_Module/rest'
 CTRL_TYPE = 'ryu'
@@ -22,14 +23,23 @@ CTRL_TYPE = 'ryu'
 class RYU_APP_request(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
     SYSTEM_NAME = ''
+    session = requests.Session()
 
     def __init__(self, *args, **kwargs):
         super(RYU_APP_request, self).__init__(*args, **kwargs)
 
-        # Get SYSTEM_NAME from Generic_LLDP_Module
-        response = requests.post(GENERIC_URL_BASE + '/controllers/regist/' + CTRL_TYPE)
-        data = yaml.safe_load(response.text)
-        self.SYSTEM_NAME = data['system_name']
+        while True:
+            try:
+                # Get SYSTEM_NAME from Generic_LLDP_Module
+                response = self.session.post(GENERIC_URL_BASE + '/controllers/regist/' + CTRL_TYPE)
+                # if response code not 200, raise an exception
+                response.raise_for_status()
+                data = yaml.safe_load(response.text)
+                self.SYSTEM_NAME = data['system_name']
+                break
+            except Exception as e:
+                print e
+                time.sleep(5)
 
         self.datapaths = {}
         self.links = {}
@@ -53,16 +63,16 @@ class RYU_APP_request(app_manager.RyuApp):
                 datapath.send_msg(req)
 
                 data = {'system_name': self.SYSTEM_NAME, 'dpid': datapath.id}
-                response = requests.post(GENERIC_URL_BASE + '/switches/' + self.SYSTEM_NAME+'/'+str(datapath.id), json=data)
+                response = self.session.post(GENERIC_URL_BASE + '/switches/' + self.SYSTEM_NAME+'/'+str(datapath.id), json=data)
         elif ev.state == DEAD_DISPATCHER:
             if datapath.id in self.datapaths:
                 del self.datapaths[datapath.id]
-                response = requests.delete(GENERIC_URL_BASE + '/switches/' + self.SYSTEM_NAME + '/' + str(datapath.id))
+                response = self.session.delete(GENERIC_URL_BASE + '/switches/' + self.SYSTEM_NAME + '/' + str(datapath.id))
 
     @set_ev_cls(ofp_event.EventOFPPortStatus, MAIN_DISPATCHER)
     def port_status_hendler(self, ev):
         self.links = {}
-        response = requests.delete(GENERIC_URL_BASE + '/links/' + self.SYSTEM_NAME)
+        response = self.session.delete(GENERIC_URL_BASE + '/links/' + self.SYSTEM_NAME)
         for dp in self.datapaths.values():
             ofproto = dp.ofproto
             parser = dp.ofproto_parser
@@ -72,11 +82,11 @@ class RYU_APP_request(app_manager.RyuApp):
     @set_ev_cls(ofp_event.EventOFPPortDescStatsReply, MAIN_DISPATCHER)
     def port_desc_stats_reply_handler(self, ev):
         datapath = ev.msg.datapath
-        response = requests.delete(GENERIC_URL_BASE + '/ports/' + self.SYSTEM_NAME + '/' + str(datapath.id))
+        response = self.session.delete(GENERIC_URL_BASE + '/ports/' + self.SYSTEM_NAME + '/' + str(datapath.id))
 
         for ofpport in ev.msg.body:
             data = {'dpid': datapath.id, 'hw_addr': ofpport.hw_addr, 'name': ofpport.name, 'port_no': ofpport.port_no}
-            response = requests.post(GENERIC_URL_BASE + '/ports/' + self.SYSTEM_NAME + '/' + str(datapath.id) + '/' + ofpport.name, json=data)
+            response = self.session.post(GENERIC_URL_BASE + '/ports/' + self.SYSTEM_NAME + '/' + str(datapath.id) + '/' + ofpport.name, json=data)
             self.send_lldp_packet(datapath, ofpport.port_no, ofpport.hw_addr)
 
     def send_lldp_packet(self, datapath, port_no, hw_addr):
@@ -131,7 +141,7 @@ class RYU_APP_request(app_manager.RyuApp):
                             'port_no': dst_port
                             }
                         }
-                response = requests.post(GENERIC_URL_BASE + '/links', json=self.links[src_dpid + ':' + src_port])
+                response = self.session.post(GENERIC_URL_BASE + '/links', json=self.links[src_dpid + ':' + src_port])
                 print json.dumps(self.links, indent=4, sort_keys=True) + '\n'
 
     def lldp_format_check(self, pkt_lldp):
