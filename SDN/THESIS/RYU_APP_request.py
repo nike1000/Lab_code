@@ -149,5 +149,20 @@ class RYU_APP_request(app_manager.RyuApp):
                 print json.dumps(self.links, indent=4, sort_keys=True) + '\n'
 
     def lldp_format_check(self, pkt_lldp):
-        return (pkt_lldp.tlvs[0].subtype == lldp.ChassisID.SUB_LOCALLY_ASSIGNED and
-                pkt_lldp.tlvs[1].subtype == lldp.ChassisID.SUB_LOCALLY_ASSIGNED)
+        if len(pkt_lldp) < 4:
+            return False
+
+        if (pkt_lldp.tlvs[0].tlv_type != lldp.LLDP_TLV_CHASSIS_ID or
+            pkt_lldp.tlvs[1].tlv_type != lldp.LLDP_TLV_PORT_ID or
+            pkt_lldp.tlvs[2].tlv_type != lldp.LLDP_TLV_TTL or
+            pkt_lldp.tlvs[-1].tlv_type != lldp.LLDP_TLV_END):
+            return False
+
+        if (pkt_lldp.tlvs[0].subtype == lldp.ChassisID.SUB_INTERFACE_NAME and pkt_lldp.tlvs[1].subtype == lldp.PortID.SUB_MAC_ADDRESS):
+            # VMware
+            return True
+        elif (pkt_lldp.tlvs[0].subtype == lldp.ChassisID.SUB_LOCALLY_ASSIGNED and pkt_lldp.tlvs[1].subtype == lldp.PortID.SUB_LOCALLY_ASSIGNED):
+            # Our Generic
+            return True
+        else:
+            return False
