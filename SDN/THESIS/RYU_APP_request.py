@@ -18,15 +18,18 @@ import yaml
 import time
 
 GENERIC_URL_BASE = 'http://140.113.216.237:8080/Generic_LLDP_Module/rest'
-CTRL_TYPE = 'ryu'
+CTRL_TYPE = ''
 
 class RYU_APP_request(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
     SYSTEM_NAME = ''
+    LLDP_FORMAT = {}
     session = requests.Session()
 
     def __init__(self, *args, **kwargs):
         super(RYU_APP_request, self).__init__(*args, **kwargs)
+
+        CTRL_TYPE = raw_input('Please input SDN Controller Type: ')
 
         while True:
             try:
@@ -36,6 +39,7 @@ class RYU_APP_request(app_manager.RyuApp):
                 response.raise_for_status()
                 data = yaml.safe_load(response.text)
                 self.SYSTEM_NAME = data['system_name']
+                self.LLDP_FORMAT = data['LLDP_subtype']
                 break
             except Exception as e:
                 print e
@@ -100,8 +104,8 @@ class RYU_APP_request(app_manager.RyuApp):
         pkt = packet.Packet()
         pkt.add_protocol(ethernet.ethernet(ethertype = ether_types.ETH_TYPE_LLDP, src = hw_addr, dst = lldp.LLDP_MAC_NEAREST_BRIDGE))
 
-        tlv_chassis_id = lldp.ChassisID(subtype = lldp.ChassisID.SUB_LOCALLY_ASSIGNED, chassis_id = str(datapath.id))
-        tlv_port_id = lldp.PortID(subtype = lldp.PortID.SUB_LOCALLY_ASSIGNED, port_id = str(port_no))
+        tlv_chassis_id = lldp.ChassisID(subtype = self.LLDP_FORMAT['chassis_subtype'], chassis_id = str(datapath.id))
+        tlv_port_id = lldp.PortID(subtype = self.LLDP_FORMAT['port_subtype'], port_id = str(port_no))
         tlv_ttl = lldp.TTL(ttl = 10)
         tlv_sysname = lldp.SystemName(system_name = self.SYSTEM_NAME)
         tlv_end = lldp.End()
@@ -122,8 +126,13 @@ class RYU_APP_request(app_manager.RyuApp):
         if not pkt_ethernet:
             return
 
+        if pkt_ethernet.ethertype != int('0x88cc', 16):
+            print 'Not LLDP ethertype'
+            return
+
         pkt_lldp = pkt.get_protocol(lldp.lldp)
         if pkt_lldp:
+            # ODL and Ryu encapsulate with lldp
             if self.lldp_format_check(pkt_lldp):
                 src_dpid = pkt_lldp.tlvs[0].chassis_id
                 src_port = pkt_lldp.tlvs[1].port_id
@@ -146,7 +155,48 @@ class RYU_APP_request(app_manager.RyuApp):
                             }
                         }
                 response = self.session.post(GENERIC_URL_BASE + '/links', json=self.links[src_dpid + ':' + src_port])
-                print json.dumps(self.links, indent=4, sort_keys=True) + '\n'
+        else:
+            # VMware does not encapsulate with lldp
+            vm_pkt = pkt[1].encode('hex')
+            print 'Chassis Subtype ' +  str(int(vm_pkt[4:6],16))
+            print 'Chassis ID ' + vm_pkt[6:18].decode('hex')
+            print 'Port Subtype ' + str(int(vm_pkt[22:24],16))
+            print 'Port ID ' + vm_pkt[24:36]
+            print 'TTL ' + str(int(vm_pkt[40:44],16))
+            print 'Port Description ' + vm_pkt[48:152].decode('hex')
+            print 'Systen Name ' + vm_pkt[156:174].decode('hex')
+            print 'System Description ' + vm_pkt[178:240].decode('hex')
+
+            Vmware_CS = str(int(vm_pkt[4:6],16))
+            VMware_CID = vm_pkt[6:18].decode('hex')
+            VMware_PS = str(int(vm_pkt[22:24],16))
+            VMware_PID = vm_pkt[24:36]
+            VMware_SysDes = vm_pkt[178:240].decode('hex')
+
+            src_dpid = VMware_CID
+            src_port = VMware_PID
+            src_sysname = VMware_SysDes
+            dst_dpid = str(msg.datapath.id)
+            dst_port = str(msg.match['in_port'])
+            dst_sysname = self.SYSTEM_NAME
+
+            self.links[src_dpid + ':' + src_port] = {
+                    'link_name': src_sysname + ':' + src_dpid + ':' + src_port,
+                    'src_system': src_sysname,
+                    'src_port': {
+                        'dpid': src_dpid,
+                        'port_no': src_port
+                        },
+                    'dst_system': dst_sysname,
+                    'dst_port': {
+                        'dpid': dst_dpid,
+                        'port_no': dst_port
+                        }
+                    }
+            response = self.session.post(GENERIC_URL_BASE + '/links', json=self.links[src_dpid + ':' + src_port])
+
+        print json.dumps(self.links, indent=4, sort_keys=True) + '\n'
+
 
     def lldp_format_check(self, pkt_lldp):
         if len(pkt_lldp) < 4:
@@ -159,7 +209,7 @@ class RYU_APP_request(app_manager.RyuApp):
             return False
 
         if (pkt_lldp.tlvs[0].subtype == lldp.ChassisID.SUB_INTERFACE_NAME and pkt_lldp.tlvs[1].subtype == lldp.PortID.SUB_MAC_ADDRESS):
-            # VMware
+            # VMware (discard, because of not encapsulate with lldp)
             return True
         elif (pkt_lldp.tlvs[0].subtype == lldp.ChassisID.SUB_LOCALLY_ASSIGNED and pkt_lldp.tlvs[1].subtype == lldp.PortID.SUB_LOCALLY_ASSIGNED):
             # Our Generic
