@@ -16,18 +16,22 @@ import requests
 import json
 import yaml
 import time
+import signal
+import sys
+import thread
 
 GENERIC_URL_BASE = 'http://140.113.216.237:8080/Generic_LLDP_Module/rest'
 CTRL_TYPE = ''
 
-class RYU_APP_request(app_manager.RyuApp):
+class RYU_APP_mix(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
     SYSTEM_NAME = ''
     LLDP_FORMAT = {}
     session = requests.Session()
 
     def __init__(self, *args, **kwargs):
-        super(RYU_APP_request, self).__init__(*args, **kwargs)
+        super(RYU_APP_mix, self).__init__(*args, **kwargs)
+        global CTRL_TYPE
 
         CTRL_TYPE = raw_input('Please input SDN Controller Type: ')
 
@@ -48,6 +52,7 @@ class RYU_APP_request(app_manager.RyuApp):
         self.datapaths = {}
         self.links = {}
         hub.spawn(self.lldp_thread)
+        hub.spawn(self.exit_detect_thread)
 
     def lldp_thread(self):
         while True:
@@ -59,6 +64,29 @@ class RYU_APP_request(app_manager.RyuApp):
                 dp.send_msg(req)
             hub.sleep(30)
             response = self.session.delete(GENERIC_URL_BASE + '/links/' + self.SYSTEM_NAME)
+
+    def exit_detect_thread(self):
+        global CTRL_TYPE
+        exit_flag = []
+
+        def signal_handler(signal, frame, *args):
+            print('\nCtrl+C pressed, exit!')
+            exit_flag.append(1)
+
+        signal.signal(signal.SIGINT, signal_handler)
+
+        while True:
+            try:
+                if len(exit_flag) != 0:
+                    response = self.session.delete(GENERIC_URL_BASE + '/controllers/unregist/' + CTRL_TYPE)
+                    response.raise_for_status()
+                    thread.interrupt_main()
+            except Exception as e:
+                print e
+                thread.interrupt_main()
+
+            hub.sleep(3)
+
 
     @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, DEAD_DISPATCHER])
     def state_change_handler(self, ev):
