@@ -195,14 +195,16 @@ class RYU_APP_mix(app_manager.RyuApp):
             if self.lldp_format_check(pkt_lldp):
                 src_dpid = pkt_lldp.tlvs[0].chassis_id
                 #src_port = pkt_lldp.tlvs[1].port_id
-                src_port = self.mac_to_port[src_dpid].get(pkt_ethernet.src, "border")
+                src_port = self.mac_to_port.get(src_dpid, {}).get(pkt_ethernet.src, "")
                 src_sysname = pkt_lldp.tlvs[3].system_name
+                src_mac = pkt_ethernet.src
                 dst_dpid = str(msg.datapath.id)
                 dst_port = str(msg.match['in_port'])
                 dst_sysname = self.SYSTEM_NAME
 
                 self.links[src_dpid + ':' + src_port] = {
                         'link_name': src_sysname + ':' + src_dpid + ':' + src_port,
+                        'src_mac': pkt_ethernet.src,
                         'src_system': src_sysname,
                         'src_port': {
                             'dpid': src_dpid,
