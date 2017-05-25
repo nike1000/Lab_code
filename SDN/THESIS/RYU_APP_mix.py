@@ -16,18 +16,22 @@ import requests
 import json
 import yaml
 import time
+import signal
+import sys
+import thread
 
 GENERIC_URL_BASE = 'http://140.113.216.237:8080/Generic_LLDP_Module/rest'
 CTRL_TYPE = ''
 
-class RYU_APP_request(app_manager.RyuApp):
+class RYU_APP_mix(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
     SYSTEM_NAME = ''
     LLDP_FORMAT = {}
     session = requests.Session()
 
     def __init__(self, *args, **kwargs):
-        super(RYU_APP_request, self).__init__(*args, **kwargs)
+        super(RYU_APP_mix, self).__init__(*args, **kwargs)
+        global CTRL_TYPE
 
         CTRL_TYPE = raw_input('Please input SDN Controller Type: ')
 
@@ -47,7 +51,47 @@ class RYU_APP_request(app_manager.RyuApp):
 
         self.datapaths = {}
         self.links = {}
+        self.mac_to_port = {}
+        hub.spawn(self.lldp_thread)
+        hub.spawn(self.exit_detect_thread)
 
+    # Regular request switches info
+    def lldp_thread(self):
+        while True:
+            self.links = {}
+            for dp in self.datapaths.values():
+                ofproto = dp.ofproto
+                parser = dp.ofproto_parser
+                req = parser.OFPPortDescStatsRequest(dp, 0, ofproto.OFPP_ANY)
+                dp.send_msg(req)
+            hub.sleep(30)
+            response = self.session.delete(GENERIC_URL_BASE + '/links/' + self.SYSTEM_NAME)
+
+    # Detect SIGINT (Ctrl^C) signal
+    def exit_detect_thread(self):
+        global CTRL_TYPE
+        exit_flag = []
+
+        def signal_handler(signal, frame, *args):
+            print('\nCtrl+C pressed, exit!')
+            exit_flag.append(1)
+
+        signal.signal(signal.SIGINT, signal_handler)
+
+        while True:
+            try:
+                # Controller unregister and exit
+                if len(exit_flag) != 0:
+                    response = self.session.delete(GENERIC_URL_BASE + '/controllers/unregist/' + CTRL_TYPE)
+                    response.raise_for_status()
+                    thread.interrupt_main()
+            except Exception as e:
+                print e
+                thread.interrupt_main()
+
+            hub.sleep(3)
+
+    # OVS online/offline event
     @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, DEAD_DISPATCHER])
     def state_change_handler(self, ev):
         datapath = ev.datapath
@@ -68,31 +112,43 @@ class RYU_APP_request(app_manager.RyuApp):
 
                 data = {'system_name': self.SYSTEM_NAME, 'dpid': datapath.id}
                 response = self.session.post(GENERIC_URL_BASE + '/switches/' + self.SYSTEM_NAME+'/'+str(datapath.id), json=data)
+        # OVS offline
         elif ev.state == DEAD_DISPATCHER:
             if datapath.id in self.datapaths:
                 del self.datapaths[datapath.id]
+                del self.mac_to_port[datapath.id]
                 response = self.session.delete(GENERIC_URL_BASE + '/switches/' + self.SYSTEM_NAME + '/' + str(datapath.id))
 
+    # OpenFlow Port Status Event
     @set_ev_cls(ofp_event.EventOFPPortStatus, MAIN_DISPATCHER)
     def port_status_hendler(self, ev):
         self.links = {}
         response = self.session.delete(GENERIC_URL_BASE + '/links/' + self.SYSTEM_NAME)
+
+        # Request port descript on each port
         for dp in self.datapaths.values():
             ofproto = dp.ofproto
             parser = dp.ofproto_parser
             req = parser.OFPPortDescStatsRequest(dp, 0, ofproto.OFPP_ANY)
             dp.send_msg(req)
 
+    # OpenFlow Port Descript Event
     @set_ev_cls(ofp_event.EventOFPPortDescStatsReply, MAIN_DISPATCHER)
     def port_desc_stats_reply_handler(self, ev):
         datapath = ev.msg.datapath
         response = self.session.delete(GENERIC_URL_BASE + '/ports/' + self.SYSTEM_NAME + '/' + str(datapath.id))
 
+        self.mac_to_port.setdefault(str(datapath.id), {})
+        # sync port info to Generic Platform
         for ofpport in ev.msg.body:
-            data = {'dpid': datapath.id, 'hw_addr': ofpport.hw_addr, 'name': ofpport.name, 'port_no': ofpport.port_no}
-            response = self.session.post(GENERIC_URL_BASE + '/ports/' + self.SYSTEM_NAME + '/' + str(datapath.id) + '/' + ofpport.name, json=data)
-            self.send_lldp_packet(datapath, ofpport.port_no, ofpport.hw_addr)
+            if ofpport.port_no < datapath.ofproto.OFPP_MAX:
+                self.mac_to_port[str(datapath.id)][ofpport.hw_addr] = str(ofpport.port_no)
+                data = {'dpid': datapath.id, 'hw_addr': ofpport.hw_addr, 'name': ofpport.name, 'port_no': ofpport.port_no}
+                response = self.session.post(GENERIC_URL_BASE + '/ports/' + self.SYSTEM_NAME + '/' + str(datapath.id) + '/' + ofpport.name, json=data)
+            #self.send_lldp_packet(datapath, ofpport.port_no, ofpport.hw_addr)
+        self.send_lldp_packet(datapath, 0, 0)
 
+    # encapsulate lldp packet
     def send_lldp_packet(self, datapath, port_no, hw_addr):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
@@ -109,7 +165,14 @@ class RYU_APP_request(app_manager.RyuApp):
         pkt.add_protocol(lldp.lldp(tlvs))
         pkt.serialize()
 
-        actions = [parser.OFPActionOutput(port=port_no)]
+        actions = []
+
+        for src in self.mac_to_port[str(datapath.id)]:
+            actions.append(parser.OFPActionSetField(eth_src=src))
+            actions.append(parser.OFPActionOutput(port=int(self.mac_to_port[str(datapath.id)][src])))
+        #actions.append(parser.OFPActionOutput(port = ofproto.OFPP_FLOOD))
+
+        #actions = [parser.OFPActionOutput(port=port_no)]
         out = parser.OFPPacketOut(datapath = datapath, buffer_id = ofproto.OFP_NO_BUFFER, in_port = ofproto.OFPP_CONTROLLER, actions = actions, data = pkt.data)
         datapath.send_msg(out)
 
@@ -131,14 +194,17 @@ class RYU_APP_request(app_manager.RyuApp):
             # ODL and Ryu encapsulate with lldp
             if self.lldp_format_check(pkt_lldp):
                 src_dpid = pkt_lldp.tlvs[0].chassis_id
-                src_port = pkt_lldp.tlvs[1].port_id
+                #src_port = pkt_lldp.tlvs[1].port_id
+                src_port = self.mac_to_port.get(src_dpid, {}).get(pkt_ethernet.src, "")
                 src_sysname = pkt_lldp.tlvs[3].system_name
+                src_mac = pkt_ethernet.src
                 dst_dpid = str(msg.datapath.id)
                 dst_port = str(msg.match['in_port'])
                 dst_sysname = self.SYSTEM_NAME
 
                 self.links[src_dpid + ':' + src_port] = {
                         'link_name': src_sysname + ':' + src_dpid + ':' + src_port,
+                        'src_mac': pkt_ethernet.src,
                         'src_system': src_sysname,
                         'src_port': {
                             'dpid': src_dpid,
@@ -190,8 +256,8 @@ class RYU_APP_request(app_manager.RyuApp):
                         }
                     }
             response = self.session.post(GENERIC_URL_BASE + '/links', json=self.links[src_dpid + ':' + src_port])
-
         print json.dumps(self.links, indent=4, sort_keys=True) + '\n'
+
 
     def lldp_format_check(self, pkt_lldp):
         if len(pkt_lldp) < 4:
@@ -203,10 +269,12 @@ class RYU_APP_request(app_manager.RyuApp):
             pkt_lldp.tlvs[-1].tlv_type != lldp.LLDP_TLV_END):
             return False
 
-        if (pkt_lldp.tlvs[0].subtype == lldp.ChassisID.SUB_INTERFACE_NAME and pkt_lldp.tlvs[1].subtype == lldp.PortID.SUB_MAC_ADDRESS):
+        if (pkt_lldp.tlvs[0].subtype == lldp.ChassisID.SUB_INTERFACE_NAME and
+            pkt_lldp.tlvs[1].subtype == lldp.PortID.SUB_MAC_ADDRESS):
             # VMware (discard, because of not encapsulate with lldp)
             return True
-        elif (pkt_lldp.tlvs[0].subtype == lldp.ChassisID.SUB_LOCALLY_ASSIGNED and pkt_lldp.tlvs[1].subtype == lldp.PortID.SUB_LOCALLY_ASSIGNED):
+        elif (pkt_lldp.tlvs[0].subtype == lldp.ChassisID.SUB_LOCALLY_ASSIGNED and
+            pkt_lldp.tlvs[1].subtype == lldp.PortID.SUB_LOCALLY_ASSIGNED):
             # Our Generic
             return True
         else:
