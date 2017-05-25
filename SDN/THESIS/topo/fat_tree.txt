@@ -3,16 +3,16 @@ controller c2 192.168.89.122 6633
 
 ovs s1 c1
 ovs s2 c1
-ovs s3 c1
-ovs s4 c1
-ovs s5 c2
-ovs s6 c2
-ovs s7 c2
-ovs s8 c2
-ovs s9 c2
-ovs s10 c2
-ovs s11 c2
-ovs s12 c2
+ovs s3 c2
+ovs s4 c2
+ovs s5 c1
+ovs s6 c1
+ovs s7 c1
+ovs s8 c1
+ovs s9 c1
+ovs s10 c1
+ovs s11 c1
+ovs s12 c1
 ovs s13 c2
 ovs s14 c2
 ovs s15 c2

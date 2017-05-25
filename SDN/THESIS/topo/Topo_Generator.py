@@ -39,13 +39,18 @@ if __name__ == '__main__':
                     link.append([src, dst])
                     net.addLink(ovs_dict.get(src)[0], ovs_dict.get(dst)[0])
                     print symbol + ', ' + src + ', ' + dst
+                elif line.startswith('host'):
+                    symbol, host, ovs = line[:-1].split(' ')
+                    h = net.addHost(host)
+                    net.addLink(h, ovs_dict.get(ovs)[0])
+                    print symbol + ', ' + host + ', ' + ovs
                 else:
                     print '--------'
 
         net.build()
 
-        for src, dst in link:
-            net.configLinkStatus(src, dst, 'down')
+        #for src, dst in link:
+        #    net.configLinkStatus(src, dst, 'down')
 
         for ctrl in ctrl_dict.values():
             ctrl.start()
@@ -53,12 +58,12 @@ if __name__ == '__main__':
         for ovs in ovs_dict.values():
             ovs[0].start( [ ctrl_dict.get(ovs[1]) ] )
 
-        for src, dst in link:
-            net.configLinkStatus(src, dst, 'up')
-            time.sleep(5)
+        #for src, dst in link:
+        #    net.configLinkStatus(src, dst, 'up')
+        #    time.sleep(5)
 
-        for src, dst in link:
-            net.configLinkStatus(src, dst, 'down')
-            time.sleep(5)
+        #for src, dst in link:
+        #    net.configLinkStatus(src, dst, 'down')
+        #    time.sleep(5)
 
         CLI(net)
