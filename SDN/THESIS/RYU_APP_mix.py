@@ -116,7 +116,7 @@ class RYU_APP_mix(app_manager.RyuApp):
         elif ev.state == DEAD_DISPATCHER:
             if datapath.id in self.datapaths:
                 del self.datapaths[datapath.id]
-                del self.mac_to_port[datapath.id]
+                del self.mac_to_port[str(datapath.id)]
                 response = self.session.delete(GENERIC_URL_BASE + '/switches/' + self.SYSTEM_NAME + '/' + str(datapath.id))
 
     # OpenFlow Port Status Event
@@ -204,10 +204,10 @@ class RYU_APP_mix(app_manager.RyuApp):
 
                 self.links[src_dpid + ':' + src_port] = {
                         'link_name': src_sysname + ':' + src_dpid + ':' + src_port,
-                        'src_mac': pkt_ethernet.src,
                         'src_system': src_sysname,
                         'src_port': {
                             'dpid': src_dpid,
+                            'hw_addr': pkt_ethernet.src,
                             'port_no': src_port
                             },
                         'dst_system': dst_sysname,
