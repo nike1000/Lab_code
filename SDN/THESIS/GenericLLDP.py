@@ -20,8 +20,8 @@ import socket
 import urllib2
 import base64
 
-SYSTEM_NAME = 'ryu:1'
-INSTANCE_NAME = 'ryu:1'
+SYSTEM_NAME = 'ryu:2'
+INSTANCE_NAME = 'ryu:2'
 linkurl = '/link/{dpid}'
 borderurl = '/border/{dpid}'
 
@@ -93,7 +93,7 @@ class GenericLLDP(app_manager.RyuApp):
         actions = []
         dpid = self.format_dpid(str(datapath.id))
         for src in self.mac_to_port[dpid]:
-            actions.append(parser.OFPActionSetField(eth_src=src))
+            actions.append(parser.OFPActionSetField(eth_src="00:00:00:00:00:"+self.mac_to_port[dpid][src][-2:]))
             actions.append(parser.OFPActionOutput(port=int(self.mac_to_port[dpid][src])))
 
         out = parser.OFPPacketOut(datapath=datapath, buffer_id=ofp.OFP_NO_BUFFER, in_port=ofp.OFPP_CONTROLLER, actions=actions, data=data)
@@ -114,7 +114,8 @@ class GenericLLDP(app_manager.RyuApp):
         if pkt_lldp:
             if self.lldp_format_check(pkt_lldp):
                 ryu_src_dpid = pkt_lldp.tlvs[0].chassis_id
-                ryu_src_port = self.mac_to_port[ryu_src_dpid][pkt_ethernet.src]
+                #ryu_src_port = self.mac_to_port[ryu_src_dpid][pkt_ethernet.src]
+                ryu_src_port = self.format_port(pkt_ethernet.src[-2:])
                 ryu_src_sysname = pkt_lldp.tlvs[3].system_name
                 ryu_dst_dpid = self.format_dpid(str(datapath.id))
                 ryu_dst_port = self.format_port(str(port))
