@@ -1,0 +1,63 @@
+controller c1 192.168.89.121 6633
+controller c2 192.168.89.122 6633
+
+ovs s1 c1
+ovs s2 c1
+ovs s3 c1
+ovs s4 c1
+ovs s5 c1
+ovs s6 c1
+ovs s7 c1
+ovs s8 c1
+ovs s9 c1
+ovs s10 c1
+ovs s11 c1
+ovs s12 c1
+ovs s13 c1
+
+ovs s14 c2
+ovs s15 c2
+ovs s16 c2
+ovs s17 c2
+ovs s18 c2
+ovs s19 c2
+ovs s20 c2
+ovs s21 c2
+ovs s22 c2
+ovs s23 c2
+ovs s24 c2
+ovs s25 c2
+ovs s26 c2
+ovs s27 c2
+
+link s1 s2
+link s1 s3
+link s1 s4
+link s2 s5
+link s2 s6
+link s2 s7
+link s3 s8
+link s3 s9
+link s3 s10
+link s4 s11
+link s4 s12
+link s4 s13
+
+link s14 s15
+link s14 s16
+link s14 s17
+link s15 s18
+link s15 s19
+link s15 s20
+link s16 s21
+link s16 s22
+link s16 s23
+link s17 s24
+link s17 s25
+link s17 s26
+
+link s1 s27
+link s14 s27
+
+host h1 s5
+host h2 s26
