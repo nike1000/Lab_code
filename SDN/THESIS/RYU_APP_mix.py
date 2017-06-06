@@ -186,7 +186,7 @@ class RYU_APP_mix(app_manager.RyuApp):
             return
 
         if pkt_ethernet.ethertype != int('0x88cc', 16):
-            print 'Not LLDP ethertype'
+            #print 'Not LLDP ethertype'
             return
 
         pkt_lldp = pkt.get_protocol(lldp.lldp)
@@ -256,7 +256,7 @@ class RYU_APP_mix(app_manager.RyuApp):
                         }
                     }
             response = self.session.post(GENERIC_URL_BASE + '/links', json=self.links[src_dpid + ':' + src_port])
-        print json.dumps(self.links, indent=4, sort_keys=True) + '\n'
+        #print json.dumps(self.links, indent=4, sort_keys=True) + '\n'
 
 
     def lldp_format_check(self, pkt_lldp):
