@@ -1,0 +1,24 @@
+controller c1 192.168.89.121 6633
+controller c2 192.168.89.122 6633
+controller c3 192.168.89.123 6633
+controller c4 192.168.89.124 6633
+
+ovs s1 c1
+ovs s2 c1
+ovs s3 c2
+ovs s4 c2
+ovs s5 c3
+ovs s6 c3
+ovs s7 c4
+ovs s8 c4
+
+link s1 s2
+link s2 s3
+link s3 s4
+link s4 s5
+link s5 s6
+link s6 s7
+link s7 s8
+
+host h1 s1
+host h2 s8

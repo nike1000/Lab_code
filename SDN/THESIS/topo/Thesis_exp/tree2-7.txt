@@ -252,10 +252,9 @@ link s60 s121
 link s61 s122
 link s61 s123
 link s62 s124
-link s62 s124
-link s63 s125
+link s62 s125
 link s63 s126
-link s64 s127
+link s63 s127
 
 host h1 s64
 host h2 s127
