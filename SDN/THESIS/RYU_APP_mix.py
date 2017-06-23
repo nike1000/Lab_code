@@ -10,6 +10,7 @@ from ryu.controller import ofp_event
 from ryu.lib.packet import ethernet
 from ryu.lib.packet import ether_types
 from ryu.lib.packet import lldp
+from ryu.lib.packet import arp
 from ryu.lib.packet import packet
 from ryu.lib import hub
 import requests
@@ -53,6 +54,8 @@ class RYU_APP_mix(app_manager.RyuApp):
         self.datapaths = {}
         self.links = {}
         self.mac_to_port = {}
+        self.LLDP_recv_port = {}
+        self.hosts = {}
         hub.spawn(self.lldp_thread)
 
     # Regular request switches info
@@ -107,6 +110,10 @@ class RYU_APP_mix(app_manager.RyuApp):
                 mod = parser.OFPFlowMod(datapath = datapath, priority = 65535, command = ofproto.OFPFC_ADD, match = match, instructions = inst)
                 datapath.send_msg(mod)
 
+                match = parser.OFPMatch()
+                mod = parser.OFPFlowMod(datapath = datapath, priority = 0, command = ofproto.OFPFC_ADD, match = match, instructions = inst)
+                datapath.send_msg(mod)
+
                 req = parser.OFPPortDescStatsRequest(datapath, 0, ofproto.OFPP_ANY)
                 datapath.send_msg(req)
 
@@ -121,7 +128,7 @@ class RYU_APP_mix(app_manager.RyuApp):
 
     # OpenFlow Port Status Event
     @set_ev_cls(ofp_event.EventOFPPortStatus, MAIN_DISPATCHER)
-    def port_status_hendler(self, ev):
+    def port_status_handler(self, ev):
         self.links = {}
         response = self.session.delete(GENERIC_URL_BASE + '/links/' + self.SYSTEM_NAME)
 
@@ -179,10 +186,25 @@ class RYU_APP_mix(app_manager.RyuApp):
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def packet_in_handler(self, ev):
         msg = ev.msg
+        datapath = msg.datapath
         pkt = packet.Packet(data=msg.data)
         pkt_ethernet = pkt.get_protocol(ethernet.ethernet)
+        in_port = msg.match['in_port']
 
         if not pkt_ethernet:
+            return
+
+        pkt_arp = pkt.get_protocol(arp.arp)
+        if pkt_arp:
+            if self.LLDP_recv_port.get(str(datapath.id), {}).get(in_port, '') != 'LLDP' and not self.hosts.get(pkt_ethernet.src, {}):
+                self.hosts[pkt_ethernet.src] = {
+                        'ip': pkt_arp.src_ip,
+                        'hw_addr': pkt_arp.src_mac,
+                        'dpid': str(datapath.id),
+                        'port_no': str(in_port),
+                        'belong_system': self.SYSTEM_NAME
+                        }
+                response = self.session.post(GENERIC_URL_BASE + '/hosts', json=self.hosts[pkt_ethernet.src])
             return
 
         if pkt_ethernet.ethertype != int('0x88cc', 16):
@@ -193,6 +215,9 @@ class RYU_APP_mix(app_manager.RyuApp):
         if pkt_lldp:
             # ODL and Ryu encapsulate with lldp
             if self.lldp_format_check(pkt_lldp):
+                self.LLDP_recv_port.setdefault(str(datapath.id), {})
+                self.LLDP_recv_port[str(datapath.id)][in_port] = 'LLDP'
+
                 src_dpid = pkt_lldp.tlvs[0].chassis_id
                 #src_port = pkt_lldp.tlvs[1].port_id
                 src_port = self.mac_to_port.get(src_dpid, {}).get(pkt_ethernet.src, "")
