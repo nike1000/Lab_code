@@ -11,6 +11,7 @@ import time
 from mininet.net import Mininet
 from mininet.cli import CLI
 from mininet.node import RemoteController, OVSSwitch
+from mininet.link import TCLink
 
 if __name__ == '__main__':
 
@@ -37,7 +38,8 @@ if __name__ == '__main__':
                 elif line.startswith('link'):
                     symbol, src, dst = line[:-1].split(' ')
                     link.append([src, dst])
-                    net.addLink(ovs_dict.get(src)[0], ovs_dict.get(dst)[0])
+                    net.addLink(ovs_dict.get(src)[0], ovs_dict.get(dst)[0], cls=TCLink, bw=1000)
+                    #net.addLink(ovs_dict.get(src)[0], ovs_dict.get(dst)[0])
                     print symbol + ', ' + src + ', ' + dst
                 elif line.startswith('host'):
                     symbol, host, ovs = line[:-1].split(' ')

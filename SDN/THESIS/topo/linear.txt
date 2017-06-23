@@ -1,5 +1,5 @@
 controller c1 192.168.89.121 6633
-controller c2 192.168.89.123 6633
+controller c2 192.168.89.122 6633
 
 ovs s1 c1
 ovs s2 c1
