@@ -33,6 +33,7 @@ class RYU_APP_mix(app_manager.RyuApp):
         super(RYU_APP_mix, self).__init__(*args, **kwargs)
         global CTRL_TYPE
 
+        hub.spawn(self.exit_detect_thread)
         CTRL_TYPE = raw_input('Please input SDN Controller Type: ')
 
         while True:
@@ -53,7 +54,6 @@ class RYU_APP_mix(app_manager.RyuApp):
         self.links = {}
         self.mac_to_port = {}
         hub.spawn(self.lldp_thread)
-        hub.spawn(self.exit_detect_thread)
 
     # Regular request switches info
     def lldp_thread(self):
@@ -269,11 +269,7 @@ class RYU_APP_mix(app_manager.RyuApp):
             pkt_lldp.tlvs[-1].tlv_type != lldp.LLDP_TLV_END):
             return False
 
-        if (pkt_lldp.tlvs[0].subtype == lldp.ChassisID.SUB_INTERFACE_NAME and
-            pkt_lldp.tlvs[1].subtype == lldp.PortID.SUB_MAC_ADDRESS):
-            # VMware (discard, because of not encapsulate with lldp)
-            return True
-        elif (pkt_lldp.tlvs[0].subtype == lldp.ChassisID.SUB_LOCALLY_ASSIGNED and
+        if (pkt_lldp.tlvs[0].subtype == lldp.ChassisID.SUB_LOCALLY_ASSIGNED and
             pkt_lldp.tlvs[1].subtype == lldp.PortID.SUB_LOCALLY_ASSIGNED):
             # Our Generic
             return True
