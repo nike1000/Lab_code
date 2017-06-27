@@ -164,7 +164,8 @@ class RYU_APP_mix(app_manager.RyuApp):
         pkt.add_protocol(ethernet.ethernet(ethertype = ether_types.ETH_TYPE_LLDP, src = hw_addr, dst = lldp.LLDP_MAC_NEAREST_BRIDGE))
 
         tlv_chassis_id = lldp.ChassisID(subtype = self.LLDP_FORMAT['chassis_subtype'], chassis_id = str(datapath.id))
-        tlv_port_id = lldp.PortID(subtype = self.LLDP_FORMAT['port_subtype'], port_id = str(port_no))
+        #tlv_port_id = lldp.PortID(subtype = self.LLDP_FORMAT['port_subtype'], port_id = str(port_no))
+        tlv_port_id = lldp.PortID(subtype = self.LLDP_FORMAT['port_subtype'], port_id = '0')
         tlv_ttl = lldp.TTL(ttl = 10)
         tlv_sysname = lldp.SystemName(system_name = self.SYSTEM_NAME)
         tlv_end = lldp.End()
@@ -172,11 +173,12 @@ class RYU_APP_mix(app_manager.RyuApp):
         pkt.add_protocol(lldp.lldp(tlvs))
         pkt.serialize()
 
-        actions = []
+        #actions = []
+        actions = [parser.OFPActionOutput(port=ofproto.OFPP_FLOOD)]
 
-        for src in self.mac_to_port[str(datapath.id)]:
-            actions.append(parser.OFPActionSetField(eth_src=src))
-            actions.append(parser.OFPActionOutput(port=int(self.mac_to_port[str(datapath.id)][src])))
+        #for src in self.mac_to_port[str(datapath.id)]:
+        #    actions.append(parser.OFPActionSetField(eth_src=src))
+        #    actions.append(parser.OFPActionOutput(port=int(self.mac_to_port[str(datapath.id)][src])))
         #actions.append(parser.OFPActionOutput(port = ofproto.OFPP_FLOOD))
 
         #actions = [parser.OFPActionOutput(port=port_no)]
@@ -220,7 +222,8 @@ class RYU_APP_mix(app_manager.RyuApp):
 
                 src_dpid = pkt_lldp.tlvs[0].chassis_id
                 #src_port = pkt_lldp.tlvs[1].port_id
-                src_port = self.mac_to_port.get(src_dpid, {}).get(pkt_ethernet.src, "")
+                #src_port = self.mac_to_port.get(src_dpid, {}).get(pkt_ethernet.src, "")
+                src_port = ''
                 src_sysname = pkt_lldp.tlvs[3].system_name
                 src_mac = pkt_ethernet.src
                 dst_dpid = str(msg.datapath.id)
@@ -228,7 +231,8 @@ class RYU_APP_mix(app_manager.RyuApp):
                 dst_sysname = self.SYSTEM_NAME
 
                 self.links[src_dpid + ':' + src_port] = {
-                        'link_name': src_sysname + ':' + src_dpid + ':' + src_port,
+                        #'link_name': src_sysname + ':' + src_dpid + ':' + src_port,
+                        'link_name': dst_sysname + ':' + dst_dpid + ':' + dst_port,
                         'src_system': src_sysname,
                         'src_port': {
                             'dpid': src_dpid,
