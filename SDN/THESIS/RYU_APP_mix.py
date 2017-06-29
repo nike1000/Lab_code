@@ -231,8 +231,8 @@ class RYU_APP_mix(app_manager.RyuApp):
                 dst_sysname = self.SYSTEM_NAME
 
                 self.links[src_dpid + ':' + src_port] = {
-                        #'link_name': src_sysname + ':' + src_dpid + ':' + src_port,
-                        'link_name': dst_sysname + ':' + dst_dpid + ':' + dst_port,
+                        'link_name': src_sysname + ':' + src_dpid + '-' + dst_sysname + ':' + dst_dpid,
+                        #'link_name': dst_sysname + ':' + dst_dpid + ':' + dst_port,
                         'src_system': src_sysname,
                         'src_port': {
                             'dpid': src_dpid,
