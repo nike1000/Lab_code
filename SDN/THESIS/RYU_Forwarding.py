@@ -32,6 +32,22 @@ class RYU_Forwarding(app_manager.RyuApp):
         self.sock.connect(server_address)
         self.sock.sendall('system_name\n')
         self.sock.sendall('ryu:140.113.216.236\n')
+        hub.spawn(self.socket_thread)
+
+    def socket_thread(self):
+        while True:
+            message = self.readLine(self.sock)
+
+            path_node = ast.literal_eval(message)
+            print path_node
+
+            datapath = dpid_to_datapath[int(path_node['dpid'])]
+            parser = datapath.ofproto_parser
+
+            match = parser.OFPMatch(in_port = int(path_node['in-port']) ,eth_src = path_node['eth_src'], eth_dst = path_node['eth_dst'])
+            actions = [parser.OFPActionOutput(int(path_node['out-port']))]
+            self.add_flow(datapath, 1, match, actions)
+
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -90,25 +106,10 @@ class RYU_Forwarding(app_manager.RyuApp):
             try:
                 message = '%s,%s\n' % (pkt_ethernet.src,pkt_ethernet.dst)
                 self.sock.sendall(message)
-                print message
-                print 'server return: \n'
 
-                while True:
-                    message = self.readLine(self.sock)
-
-                    if message == 'reply_path_finish':
-                        break
-
-                    path_node = ast.literal_eval(message)
-                    print path_node
-
-                    match = parser.OFPMatch(in_port = int(path_node['in-port']) ,eth_src = pkt_ethernet.src, eth_dst = pkt_ethernet.dst)
-                    #match = parser.OFPMatch(eth_src = pkt_ethernet.src, eth_dst = pkt_ethernet.dst)
-                    actions = [parser.OFPActionOutput(int(path_node['out-port']))]
-                    self.add_flow(dpid_to_datapath[int(path_node['dpid'])], 1, match, actions)
-
-                out = parser.OFPPacketOut(datapath=datapath, buffer_id = ofproto.OFP_NO_BUFFER, in_port=in_port, actions=actions, data=msg.data)
-                datapath.send_msg(out)
+                #actions = [parser.OFPActionOutput(ofproto.OFPP_FLOOD)]
+                #out = parser.OFPPacketOut(datapath=datapath, buffer_id = ofproto.OFP_NO_BUFFER, in_port=in_port, data=msg.data, actions = actions)
+                #datapath.send_msg(out)
             finally:
                 print 'end'
 
