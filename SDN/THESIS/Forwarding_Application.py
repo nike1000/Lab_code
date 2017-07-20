@@ -14,21 +14,20 @@ def threadWork(client):
         if msg == 'exit':
             break
         elif msg == 'system_name':
+            # if prefix message is system_name, readline again to get system_name
             msg  = readLine(client)
             clisock_dict[msg] = client
         else:
+            # path forwarding query, the message must be "src_mac,dst_mac"
             print 'Client send:' + msg
             src_mac, dst_mac = msg.split(',')
             fp = path_request(src_mac, dst_mac)
 
+            # after path calculated, return each path_node to corresponding controller system_name
             for path_node in fp:
                 system_name = path_node['controller']
                 clisock_dict[system_name].sendall(json.dumps(path_node) + '\n')
 
-            #for system_name in clisock_dict:
-            #    clisock_dict[system_name].sendall('reply_path_finish\n')
-
-            #client.sendall(fp)
     client.close()
 
 def readLine(sock):
@@ -93,12 +92,12 @@ def path_request(src_mac, dst_mac):
         G.add_edge(data[host]['dpid'], host, src_outport = data[host]['port_no'], dst_inport = '1')
         G.add_edge(host, data[host]['dpid'], src_outport = '1', dst_inport = data[host]['port_no'])
 
-    source = mac_to_dpid[src_mac]
-    target = mac_to_dpid[dst_mac]
-
-    #print json.dumps(G.adj, indent=4, sort_keys=True) + '\n'
-
     try:
+        source = mac_to_dpid[src_mac]
+        target = mac_to_dpid[dst_mac]
+
+        #print json.dumps(G.adj, indent=4, sort_keys=True) + '\n'
+
         # calculate shortest path and resversed path node
         path = nx.shortest_path(G, source = source, target = target)
         path = path[::-1]
@@ -149,4 +148,5 @@ if __name__ == '__main__':
     #path_request(src_mac, dst_mac)
     #print '======================='
     #path_request(dst_mac, src_mac)
+    print "Forwarding Application Start!"
     Socket_Server()
