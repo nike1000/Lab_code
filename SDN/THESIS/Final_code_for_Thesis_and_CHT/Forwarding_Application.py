@@ -143,10 +143,6 @@ def Socket_Server():
     sock.close()
 
 if __name__ == '__main__':
-    #src_mac = '8e:98:5a:f4:9e:46'
-    #dst_mac = '2a:fc:a4:b2:c9:cf'
-    #path_request(src_mac, dst_mac)
-    #print '======================='
-    #path_request(dst_mac, src_mac)
+
     print "Forwarding Application Start!"
     Socket_Server()
