@@ -26,7 +26,7 @@ sleep 10
 
 tmux select-window -t $SESSION:2
 tmux send-keys "ssh 192.168.89.121" C-m
-tmux send-keys "ryu-manager /home/kshuang/Lab_code/SDN/THESIS/RYU_Forwarding.py /home/kshuang/Lab_code/SDN/THESIS/Final_code_for_Thesis/Generic_Agent_CHT.py" C-m
+tmux send-keys "ryu-manager /home/kshuang/Lab_code/SDN/THESIS/Final_code_for_Thesis_and_CHT/RYU_Forwarding.py /home/kshuang/Lab_code/SDN/THESIS/Final_code_for_Thesis_and_CHT/Generic_Agent_CHT.py" C-m
 
 echo "===> Controller 1 Start up"
 
@@ -34,7 +34,7 @@ sleep 15
 
 tmux select-window -t $SESSION:3
 tmux send-keys "ssh 192.168.89.122" C-m
-tmux send-keys "ryu-manager /home/kshuang/Lab_code/SDN/THESIS/RYU_Forwarding.py /home/kshuang/Lab_code/SDN/THESIS/Final_code_for_Thesis/Generic_Agent_CHT.py" C-m
+tmux send-keys "ryu-manager /home/kshuang/Lab_code/SDN/THESIS/Final_code_for_Thesis_and_CHT/RYU_Forwarding.py /home/kshuang/Lab_code/SDN/THESIS/Final_code_for_Thesis_and_CHT/Generic_Agent_CHT.py" C-m
 
 echo "===> Controller 2 Start up"
 
@@ -47,10 +47,6 @@ sleep 1
 tmux send-keys "sudo mn -c" C-m
 tmux send-keys $PASSWD C-m
 sleep 3
-tmux send-keys "sudo /home/kshuang/Lab_code/SDN/THESIS/topo/Topo_Generator.py /home/kshuang/Lab_code/SDN/THESIS/topo/Thesis_exp/demo_topo.txt" C-m
+tmux send-keys "sudo /home/kshuang/Lab_code/SDN/THESIS/topo/Topo_Generator.py /home/kshuang/Lab_code/SDN/THESIS/topo/demo_topo.txt" C-m
 
 echo "===> Data Plane Created"
-
-#sleep 40
-
-#tmux send-keys "pingall" C-m
