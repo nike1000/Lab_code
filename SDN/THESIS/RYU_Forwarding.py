@@ -31,7 +31,7 @@ class RYU_Forwarding(app_manager.RyuApp):
         server_address = ('140.113.216.236', 30000)
         self.sock.connect(server_address)
         self.sock.sendall('system_name\n')
-        self.sock.sendall('ryu:140.113.216.236\n')
+        self.sock.sendall('ryu:140.113.216.237\n')
         hub.spawn(self.socket_thread)
 
     def socket_thread(self):
@@ -59,6 +59,14 @@ class RYU_Forwarding(app_manager.RyuApp):
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,ofproto.OFPCML_NO_BUFFER)]
         self.add_flow(datapath, 0, match, actions)
 
+        match = parser.OFPMatch(eth_type = int('0x0806', 16), eth_dst = 'ff:ff:ff:ff:ff:ff')
+        actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,ofproto.OFPCML_NO_BUFFER)]
+        self.add_flow(datapath, 3, match, actions)
+
+        match = parser.OFPMatch(eth_dst = 'ff:ff:ff:ff:ff:ff')
+        actions = [parser.OFPActionOutput(ofproto.OFPP_FLOOD)]
+        self.add_flow(datapath, 2, match, actions)
+
         dpid_to_datapath[datapath.id] = datapath
 
     def add_flow(self, datapath, priority, match, actions):
@@ -83,22 +91,10 @@ class RYU_Forwarding(app_manager.RyuApp):
             return
 
         if pkt_ethernet.ethertype == int('0x88cc', 16):
-            print 'LLDP ethertype'
+            #print 'LLDP ethertype'
             return
         else:
             if pkt_ethernet.dst[0:6] == '33:33:':
-                return
-
-            if pkt_ethernet.dst == 'ff:ff:ff:ff:ff:ff':
-                out_port = ofproto.OFPP_FLOOD
-                actions = [parser.OFPActionOutput(out_port)]
-
-                data = None
-                if msg.buffer_id == ofproto.OFP_NO_BUFFER:
-                    data = msg.data
-
-                out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,in_port=in_port, actions=actions, data=data)
-                datapath.send_msg(out)
                 return
 
             print 'packet-In'
@@ -107,9 +103,9 @@ class RYU_Forwarding(app_manager.RyuApp):
                 message = '%s,%s\n' % (pkt_ethernet.src,pkt_ethernet.dst)
                 self.sock.sendall(message)
 
-                #actions = [parser.OFPActionOutput(ofproto.OFPP_FLOOD)]
-                #out = parser.OFPPacketOut(datapath=datapath, buffer_id = ofproto.OFP_NO_BUFFER, in_port=in_port, data=msg.data, actions = actions)
-                #datapath.send_msg(out)
+                actions = [parser.OFPActionOutput(ofproto.OFPP_FLOOD)]
+                out = parser.OFPPacketOut(datapath=datapath, buffer_id = ofproto.OFP_NO_BUFFER, in_port=in_port, data=msg.data, actions = actions)
+                datapath.send_msg(out)
             finally:
                 print 'end'
 
