@@ -10,6 +10,7 @@ from ryu.controller import ofp_event
 from ryu.lib.packet import ethernet
 from ryu.lib.packet import ether_types
 from ryu.lib.packet import lldp
+from ryu.lib.packet import arp
 from ryu.lib.packet import packet
 from ryu.lib import hub
 import json
@@ -20,6 +21,7 @@ import time
 import ast
 
 dpid_to_datapath = {}
+packet_to_port = {}
 
 class RYU_Forwarding(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
@@ -59,14 +61,6 @@ class RYU_Forwarding(app_manager.RyuApp):
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,ofproto.OFPCML_NO_BUFFER)]
         self.add_flow(datapath, 0, match, actions)
 
-        match = parser.OFPMatch(eth_type = int('0x0806', 16), eth_dst = 'ff:ff:ff:ff:ff:ff')
-        actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,ofproto.OFPCML_NO_BUFFER)]
-        self.add_flow(datapath, 3, match, actions)
-
-        match = parser.OFPMatch(eth_dst = 'ff:ff:ff:ff:ff:ff')
-        actions = [parser.OFPActionOutput(ofproto.OFPP_FLOOD)]
-        self.add_flow(datapath, 2, match, actions)
-
         dpid_to_datapath[datapath.id] = datapath
 
     def add_flow(self, datapath, priority, match, actions):
@@ -90,15 +84,18 @@ class RYU_Forwarding(app_manager.RyuApp):
         if not pkt_ethernet:
             return
 
+        if pkt_ethernet.dst[0:6] == '33:33:':
+            # IPv6 mac address
+            return
+
         if pkt_ethernet.ethertype == int('0x88cc', 16):
             #print 'LLDP ethertype'
             return
-        else:
-            if pkt_ethernet.dst[0:6] == '33:33:':
-                return
 
-            print 'packet-In'
+        status = self.anti_arp_broadcast_storm(pkt, in_port, datapath.id)
 
+        if status == 'flood':
+            #print 'packet-In'
             try:
                 message = '%s,%s\n' % (pkt_ethernet.src,pkt_ethernet.dst)
                 self.sock.sendall(message)
@@ -107,7 +104,46 @@ class RYU_Forwarding(app_manager.RyuApp):
                 out = parser.OFPPacketOut(datapath=datapath, buffer_id = ofproto.OFP_NO_BUFFER, in_port=in_port, data=msg.data, actions = actions)
                 datapath.send_msg(out)
             finally:
-                print 'end'
+                pass
+        elif status == 'notflood':
+            try:
+                message = '%s,%s\n' % (pkt_ethernet.src,pkt_ethernet.dst)
+                self.sock.sendall(message)
+
+                time.sleep(1)
+                actions = [parser.OFPActionOutput(ofproto.OFPP_TABLE)]
+                out = parser.OFPPacketOut(datapath=datapath, buffer_id = ofproto.OFP_NO_BUFFER, in_port=in_port, data=msg.data, actions = actions)
+                datapath.send_msg(out)
+            finally:
+                pass
+        elif status == 'drop':
+            #print 'Broadcast Storm!!!'
+            pass
+
+
+    def anti_arp_broadcast_storm(self, pkt, in_port, dpid):
+        pkt_ethernet = pkt.get_protocol(ethernet.ethernet)
+        pkt_arp = pkt.get_protocol(arp.arp)
+
+        if pkt_ethernet.dst == 'ff:ff:ff:ff:ff:ff':
+            if pkt_arp and (pkt_arp.opcode == arp.ARP_REQUEST):
+                if (pkt_arp.src_mac in packet_to_port) and (pkt_arp.dst_ip == packet_to_port[pkt_arp.src_mac][0]):
+                    if (dpid in packet_to_port[pkt_arp.src_mac][1]):
+                        if in_port != packet_to_port[pkt_arp.src_mac][1][dpid]:
+                            return 'drop'
+                        else:
+                            return 'flood'
+                    else:
+                        packet_to_port[pkt_arp.src_mac][1][dpid] = in_port
+                        return 'flood'
+                else:
+                    packet_to_port[pkt_arp.src_mac] = [pkt_arp.dst_ip, {dpid: in_port}]
+                    return 'flood'
+            else:
+                return 'flood_but_not_arp'
+        else:
+            return 'notflood'
+
 
     def readLine(self, sock):
         line = ''
